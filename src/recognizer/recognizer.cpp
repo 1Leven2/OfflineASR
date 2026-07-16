@@ -5,6 +5,7 @@
 #include "offline_asr/decoder/token_table.h"
 #include "offline_asr/feature/fbank_extractor.h"
 #include "offline_asr/feature/streaming_fbank_extractor.h"
+#include "offline_asr/vad/energy_vad.h"
 #include "offline_asr/runtime/runtime_factory.h"
 #include "offline_asr/utils/timer.h"
 
@@ -64,6 +65,21 @@ public:
     sfbank_cfg.pre_emphasis_alpha = cfg_.pre_emphasis_alpha;
     streaming_fbank_ = std::make_unique<StreamingFbankExtractor>(sfbank_cfg);
 
+    // VAD
+    if (cfg_.vad.enabled) {
+      if (cfg_.vad.type == "energy") {
+        EnergyVad::Config vad_cfg;
+        vad_cfg.threshold = cfg_.vad.threshold;
+        vad_cfg.frame_ms = cfg_.vad.frame_ms;
+        vad_cfg.min_speech_ms = cfg_.vad.min_speech_ms;
+        vad_cfg.min_silence_ms = cfg_.vad.min_silence_ms;
+        vad_cfg.sample_rate = cfg_.sample_rate;
+        vad_ = std::make_unique<EnergyVad>(vad_cfg);
+      } else {
+        spdlog::warn("Unknown VAD type '{}', VAD disabled", cfg_.vad.type);
+      }
+    }
+
     return true;
   }
 
@@ -97,11 +113,32 @@ public:
     }
     result.preprocess_ms = stage_timer.ElapsedMs();
 
+    // VAD: trim silence in offline mode
+    std::vector<float> vad_trimmed;
+    const float* process_ptr = preprocess_buffer_.data();
+    size_t process_len = num_samples;
+
+    if (vad_) {
+      auto segments = vad_->Segment(preprocess_buffer_.data(), num_samples);
+      if (segments.empty()) {
+        spdlog::warn("VAD: no speech detected ({} samples)", num_samples);
+        return result;
+      }
+      vad_trimmed.reserve(num_samples);
+      for (const auto& seg : segments) {
+        vad_trimmed.insert(vad_trimmed.end(),
+                           preprocess_buffer_.data() + seg.start_sample,
+                           preprocess_buffer_.data() + seg.end_sample);
+      }
+      process_ptr = vad_trimmed.data();
+      process_len = vad_trimmed.size();
+    }
+
     // Feature extraction
     stage_timer.Reset();
     auto fbank =
-        fbank_extractor_.Extract(preprocess_buffer_.data(), num_samples);
-    int num_frames = fbank_extractor_.NumFrames(num_samples);
+        fbank_extractor_.Extract(process_ptr, process_len);
+    int num_frames = fbank_extractor_.NumFrames(process_len);
     result.fbank_ms = stage_timer.ElapsedMs();
 
     if (fbank.empty() || num_frames == 0) {
@@ -195,6 +232,10 @@ public:
         preprocess_buffer_[i] *= inv_peak;
     }
 
+    // VAD gate: skip silence chunks
+    if (vad_ && !vad_->IsSpeech(preprocess_buffer_.data(), num_samples))
+      return;
+
     // Extract new FBank frames from this chunk
     auto new_frames =
         streaming_fbank_->Feed(preprocess_buffer_.data(), num_samples);
@@ -285,6 +326,7 @@ public:
     streaming_fbank_->Reset();
     chunk_fbank_buffer_.clear();
     decoder_->Reset();
+    if (vad_) vad_->Reset();
   }
 
 private:
@@ -294,6 +336,9 @@ private:
   std::unique_ptr<CtcDecoderWrapper> decoder_;
   TokenTable token_table_;
   std::vector<float> preprocess_buffer_; // reused across calls
+
+  // VAD
+  std::unique_ptr<Vad> vad_;
 
   // Streaming state (V1.1)
   std::unique_ptr<StreamingFbankExtractor> streaming_fbank_;

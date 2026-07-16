@@ -24,3 +24,7 @@ gtest_discover_tests(test_streaming_fbank)
 add_executable(test_streaming_pipeline test_streaming_pipeline.cpp)
 target_link_libraries(test_streaming_pipeline PRIVATE offline_asr_core gtest_main)
 gtest_discover_tests(test_streaming_pipeline)
+
+add_executable(test_vad test_vad.cpp)
+target_link_libraries(test_vad PRIVATE offline_asr_core gtest_main)
+gtest_discover_tests(test_vad)

@@ -35,6 +35,15 @@ RecognizerConfig RecognizerConfig::FromYaml(const std::string& path) {
             cfg.cutoff_threshold = decoder["cutoff_threshold"].as<float>(0.0f);
         }
 
+        if (auto vad = root["vad"]) {
+            cfg.vad.enabled = vad["enabled"].as<bool>(false);
+            cfg.vad.type = vad["type"].as<std::string>("energy");
+            cfg.vad.threshold = vad["threshold"].as<float>(0.01f);
+            cfg.vad.frame_ms = vad["frame_ms"].as<int>(30);
+            cfg.vad.min_speech_ms = vad["min_speech_ms"].as<int>(100);
+            cfg.vad.min_silence_ms = vad["min_silence_ms"].as<int>(200);
+        }
+
         cfg.tokens_path = root["tokens"].as<std::string>("");
     } catch (const YAML::Exception& e) {
         spdlog::error("Failed to parse config YAML: {} ({})", path, e.what());

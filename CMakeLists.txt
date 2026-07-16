@@ -71,6 +71,7 @@ set_target_properties(ctc_core PROPERTIES
 
 # ---- Core Library ----
 add_library(offline_asr_core STATIC
+    src/vad/energy_vad.cpp
     src/audio/wav_reader.cpp
     src/feature/fbank_extractor.cpp
     src/feature/streaming_fbank_extractor.cpp

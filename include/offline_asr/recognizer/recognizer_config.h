@@ -5,6 +5,15 @@
 
 namespace offline_asr {
 
+struct VadConfig {
+    bool enabled = false;
+    std::string type = "energy";
+    float threshold = 0.01f;
+    int frame_ms = 30;
+    int min_speech_ms = 100;
+    int min_silence_ms = 200;
+};
+
 /**
  * 识别器配置 — 从 YAML 文件解析或代码构建
  */
@@ -32,6 +41,9 @@ struct RecognizerConfig {
 
     // Tokens
     std::string tokens_path;
+
+    // VAD
+    VadConfig vad;
 
     /** 从 YAML 文件加载配置 */
     static RecognizerConfig FromYaml(const std::string& path);
