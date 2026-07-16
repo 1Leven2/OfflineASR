@@ -73,6 +73,7 @@ set_target_properties(ctc_core PROPERTIES
 add_library(offline_asr_core STATIC
     src/audio/wav_reader.cpp
     src/feature/fbank_extractor.cpp
+    src/feature/streaming_fbank_extractor.cpp
     src/runtime/onnx_runtime.cpp
     src/runtime/runtime_factory.cpp
     src/decoder/ctc_wrapper.cpp

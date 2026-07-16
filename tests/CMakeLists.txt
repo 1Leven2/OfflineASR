@@ -16,3 +16,11 @@ gtest_discover_tests(test_ctc_wrapper)
 add_executable(test_recognizer_config test_recognizer_config.cpp)
 target_link_libraries(test_recognizer_config PRIVATE offline_asr_core gtest_main)
 gtest_discover_tests(test_recognizer_config)
+
+add_executable(test_streaming_fbank test_streaming_fbank.cpp)
+target_link_libraries(test_streaming_fbank PRIVATE offline_asr_core gtest_main)
+gtest_discover_tests(test_streaming_fbank)
+
+add_executable(test_streaming_pipeline test_streaming_pipeline.cpp)
+target_link_libraries(test_streaming_pipeline PRIVATE offline_asr_core gtest_main)
+gtest_discover_tests(test_streaming_pipeline)

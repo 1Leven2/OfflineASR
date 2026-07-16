@@ -4,6 +4,7 @@
 #include "offline_asr/decoder/ctc_wrapper.h"
 #include "offline_asr/decoder/token_table.h"
 #include "offline_asr/feature/fbank_extractor.h"
+#include "offline_asr/feature/streaming_fbank_extractor.h"
 #include "offline_asr/runtime/runtime_factory.h"
 #include "offline_asr/utils/timer.h"
 
@@ -53,6 +54,15 @@ public:
           "No tokens file specified, using default char vocab ({} tokens)",
           token_table_.VocabSize());
     }
+
+    // Streaming FBank extractor
+    StreamingFbankExtractor::Config sfbank_cfg;
+    sfbank_cfg.sample_rate = cfg_.sample_rate;
+    sfbank_cfg.frame_length_ms = cfg_.frame_length_ms;
+    sfbank_cfg.frame_shift_ms = cfg_.frame_shift_ms;
+    sfbank_cfg.num_mel_bins = cfg_.num_mel_bins;
+    sfbank_cfg.pre_emphasis_alpha = cfg_.pre_emphasis_alpha;
+    streaming_fbank_ = std::make_unique<StreamingFbankExtractor>(sfbank_cfg);
 
     return true;
   }
@@ -158,11 +168,124 @@ public:
     return Recognize(audio.samples.data(), audio.samples.size());
   }
 
-  // Streaming stubs (V1.1)
-  void AcceptWaveform(const float *, size_t) {}
-  std::string Decode() { return ""; }
-  std::string GetPartialResult() { return ""; }
-  void Reset() { decoder_->Reset(); }
+  // ---- Streaming (V1.1) ----
+
+  void AcceptWaveform(const float *samples, size_t num_samples) {
+    if (!streaming_fbank_ || !runtime_ || !decoder_)
+      return;
+
+    // Preprocess (same as offline path): DC removal + peak normalize
+    preprocess_buffer_.resize(num_samples);
+    float mean = 0.0F;
+    for (size_t i = 0; i < num_samples; ++i)
+      mean += samples[i];
+    mean /= static_cast<float>(num_samples);
+
+    float peak = 0.0F;
+    for (size_t i = 0; i < num_samples; ++i) {
+      float v = samples[i] - mean;
+      preprocess_buffer_[i] = v;
+      float abs_v = v < 0.0F ? -v : v;
+      if (abs_v > peak)
+        peak = abs_v;
+    }
+    if (peak > 0.0F) {
+      float inv_peak = 1.0F / peak;
+      for (size_t i = 0; i < num_samples; ++i)
+        preprocess_buffer_[i] *= inv_peak;
+    }
+
+    // Extract new FBank frames from this chunk
+    auto new_frames =
+        streaming_fbank_->Feed(preprocess_buffer_.data(), num_samples);
+    if (new_frames.empty())
+      return;
+
+    size_t feat_dim = static_cast<size_t>(streaming_fbank_->NumMelBins());
+    chunk_fbank_buffer_.insert(chunk_fbank_buffer_.end(), new_frames.begin(),
+                               new_frames.end());
+
+    // Run inference when enough frames accumulated
+    int num_mel_bins = streaming_fbank_->NumMelBins();
+    while (static_cast<int>(chunk_fbank_buffer_.size() / feat_dim) >=
+           kMinChunkFrames) { // 只要缓冲中的帧数超过
+                              // kMinChunkFrames，就可以进行推理
+      int total_frames =
+          static_cast<int>(chunk_fbank_buffer_.size() / feat_dim);
+
+      auto log_probs = runtime_->Forward(chunk_fbank_buffer_.data(),
+                                         total_frames, num_mel_bins);
+      if (log_probs.empty())
+        return;
+
+      int vocab_size = static_cast<int>(runtime_->VocabSize());
+      int output_frames = static_cast<int>(log_probs.size()) / vocab_size;
+
+      // Feed per-frame log-probs to CTC decoder
+      for (int f = 0; f < output_frames; ++f) {
+        decoder_->Step(log_probs.data() + f * vocab_size, vocab_size);
+      }
+
+      // Keep overlap frames for next chunk (CNN context smoothing)
+      // 为了给下一次推理提供帧间的上下文（尤其当模型包含卷积层时），会保留最后
+      // kChunkOverlap 帧
+      int keep_frames = total_frames - kChunkOverlap;
+      if (keep_frames <= 0) // 如果总帧数不足以保留重叠帧，则清空缓冲区
+        keep_frames = total_frames;
+      size_t keep_elements = keep_frames * feat_dim;
+      chunk_fbank_buffer_.erase(chunk_fbank_buffer_.begin(),
+                                chunk_fbank_buffer_.begin() + keep_elements);
+    }
+  }
+
+  std::string GetPartialResult() {
+    if (!decoder_)
+      return "";
+    auto results = decoder_->Results(cfg_.n_best);
+    if (results.empty())
+      return "";
+    return token_table_.Decode(results[0].tokens);
+  }
+
+  std::string Decode() {
+    if (!streaming_fbank_ || !runtime_ || !decoder_)
+      return "";
+
+    // Flush remaining FBank frames
+    auto final_frames = streaming_fbank_->Flush();
+    if (!final_frames.empty()) {
+      size_t feat_dim = static_cast<size_t>(streaming_fbank_->NumMelBins());
+      chunk_fbank_buffer_.insert(chunk_fbank_buffer_.end(),
+                                 final_frames.begin(), final_frames.end());
+
+      int total_frames =
+          static_cast<int>(chunk_fbank_buffer_.size() / feat_dim);
+      if (total_frames > 0) {
+        auto log_probs =
+            runtime_->Forward(chunk_fbank_buffer_.data(), total_frames,
+                              streaming_fbank_->NumMelBins());
+        if (!log_probs.empty()) {
+          int vocab_size = static_cast<int>(runtime_->VocabSize());
+          int output_frames = static_cast<int>(log_probs.size()) / vocab_size;
+          for (int f = 0; f < output_frames; ++f) {
+            decoder_->Step(log_probs.data() + f * vocab_size, vocab_size);
+          }
+        }
+      }
+      chunk_fbank_buffer_.clear();
+    }
+
+    auto results = decoder_->Results(1);
+    if (results.empty())
+      return "";
+    return token_table_.Decode(results[0].tokens);
+  }
+
+  void Reset() {
+    streaming_fbank_->Reset();
+    chunk_fbank_buffer_.clear();
+    decoder_->Reset();
+  }
 
 private:
   RecognizerConfig cfg_;
@@ -171,6 +294,12 @@ private:
   std::unique_ptr<CtcDecoderWrapper> decoder_;
   TokenTable token_table_;
   std::vector<float> preprocess_buffer_; // reused across calls
+
+  // Streaming state (V1.1)
+  std::unique_ptr<StreamingFbankExtractor> streaming_fbank_;
+  std::vector<float> chunk_fbank_buffer_;
+  static constexpr int kMinChunkFrames = 40;
+  static constexpr int kChunkOverlap = 4;
 };
 
 // ---- PIMPL forwarding ----

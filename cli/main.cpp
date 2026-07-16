@@ -3,9 +3,9 @@
 #include <fstream>
 #include <iostream>
 
+#include "offline_asr/audio/wav_reader.h"
 #include "offline_asr/recognizer/recognizer.h"
 #include "offline_asr/utils/logger.h"
-#include "offline_asr/utils/timer.h"
 
 using namespace offline_asr;
 
@@ -14,6 +14,7 @@ static void print_usage() {
               << "Commands:\n"
               << "  transcribe <audio>  [-c config.yaml]\n"
               << "  batch <filelist>    [-c config.yaml] [-o output.txt]\n"
+              << "  stream <audio>      [-c config.yaml] [-k chunk_ms]\n"
               << "  benchmark           [-c config.yaml] [-i iterations]\n";
 }
 
@@ -124,6 +125,37 @@ int cmd_benchmark(const std::string& config_path, int iterations) {
     return 0;
 }
 
+int cmd_stream(const std::string& audio_path, int chunk_ms,
+               const std::string& config_path) {
+    InitLogger("info");
+
+    auto audio = WavReader::Read(audio_path);
+    if (audio.samples.empty()) {
+        spdlog::error("Failed to read audio: {}", audio_path);
+        return 1;
+    }
+
+    Recognizer recognizer(config_path);
+    size_t chunk_size = static_cast<size_t>(audio.sample_rate * chunk_ms / 1000);
+    size_t offset = 0;
+    int chunk_idx = 0;
+
+    while (offset < audio.samples.size()) {
+        size_t n = std::min(chunk_size, audio.samples.size() - offset);
+        recognizer.AcceptWaveform(audio.samples.data() + offset, n);
+        offset += n;
+
+        auto partial = recognizer.GetPartialResult();
+        if (!partial.empty()) {
+            std::cout << "[" << ++chunk_idx << "] " << partial << std::endl;
+        }
+    }
+
+    std::string final_text = recognizer.Decode();
+    std::cout << "[final] " << final_text << std::endl;
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     if (argc < 2) {
         print_usage();
@@ -149,6 +181,15 @@ int main(int argc, char* argv[]) {
         const char* output = get_arg(argc, argv, "-o");
         std::string output_path = output ? output : "";
         return cmd_batch(argv[2], config_path, output_path);
+    }
+    else if (command == "stream") {
+        if (argc < 3) {
+            std::cerr << "Usage: offline_asr stream <audio_file> [-c config.yaml] [-k chunk_ms]\n";
+            return 1;
+        }
+        const char* chunk_arg = get_arg(argc, argv, "-k");
+        int chunk_ms = chunk_arg ? std::stoi(chunk_arg) : 400;
+        return cmd_stream(argv[2], chunk_ms, config_path);
     }
     else if (command == "benchmark") {
         const char* iter_str = get_arg(argc, argv, "-i");
