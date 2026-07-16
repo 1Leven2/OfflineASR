@@ -1,0 +1,17 @@
+build/
+.cache/
+venv/
+__pycache__/
+*.pyc
+*.o
+*.a
+*.so
+*.dylib
+.DS_Store
+compile_commands.json
+.claude/
+python/data/
+CMakeFiles/
+python/Testing/
+python/training.log
+.vscode/

@@ -1,0 +1,24 @@
+# OfflineASR Default Configuration
+
+model:
+  path: models/model.onnx
+  input_name: "input"
+  output_name: "output"
+
+runtime:
+  backend: onnx
+  num_threads: 8
+
+feature:
+  sample_rate: 16000
+  frame_length_ms: 25.0
+  frame_shift_ms: 10.0
+  num_mel_bins: 80
+  pre_emphasis_alpha: 0.97
+
+decoder:
+  beam_size: 10
+  n_best: 1
+  cutoff_threshold: 0.0
+
+tokens: models/tokens.txt

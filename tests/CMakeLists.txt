@@ -1,0 +1,18 @@
+# Define source dir for locating test data files
+add_compile_definitions(TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/..")
+
+add_executable(test_token_table test_token_table.cpp)
+target_link_libraries(test_token_table PRIVATE offline_asr_core gtest_main)
+gtest_discover_tests(test_token_table)
+
+add_executable(test_fbank_extractor test_fbank_extractor.cpp)
+target_link_libraries(test_fbank_extractor PRIVATE offline_asr_core gtest_main)
+gtest_discover_tests(test_fbank_extractor)
+
+add_executable(test_ctc_wrapper test_ctc_wrapper.cpp)
+target_link_libraries(test_ctc_wrapper PRIVATE offline_asr_core gtest_main)
+gtest_discover_tests(test_ctc_wrapper)
+
+add_executable(test_recognizer_config test_recognizer_config.cpp)
+target_link_libraries(test_recognizer_config PRIVATE offline_asr_core gtest_main)
+gtest_discover_tests(test_recognizer_config)
