@@ -27,3 +27,29 @@ decoder:
   cutoff_threshold: 0.0
 
 tokens: models/tokens.txt
+
+# VAD
+vad:
+  enabled: false
+  type: energy
+  threshold: 0.01
+  frame_ms: 30
+  min_speech_ms: 100
+  min_silence_ms: 200
+
+# Endpoint detection (streaming only)
+endpoint:
+  enabled: false
+  silence_timeout_ms: 800
+  decoder_stability_frames: 40
+  max_utterance_ms: 30000
+
+# Punctuation insertion (pause-gap based)
+punctuation:
+  enabled: false
+  period_silence_ms: 800
+  comma_silence_ms: 300
+
+# Inverse Text Normalization
+itn:
+  enabled: false

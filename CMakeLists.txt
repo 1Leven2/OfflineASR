@@ -92,6 +92,9 @@ add_library(offline_asr_core STATIC
     src/decoder/token_table.cpp
     src/recognizer/recognizer.cpp
     src/recognizer/recognizer_config.cpp
+    src/recognizer/endpoint_detector.cpp
+    src/recognizer/punctuation.cpp
+    src/recognizer/itn.cpp
     src/utils/thread_pool.cpp
     src/recognizer/async_recognizer.cpp
     src/utils/logger.cpp

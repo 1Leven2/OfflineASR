@@ -14,6 +14,23 @@ struct VadConfig {
     int min_silence_ms = 200;
 };
 
+struct EndpointConfig {
+    bool enabled = false;
+    int silence_timeout_ms = 800;
+    int decoder_stability_frames = 40;
+    int max_utterance_ms = 30000;
+};
+
+struct PunctuationConfig {
+    bool enabled = false;
+    int period_silence_ms = 800;
+    int comma_silence_ms = 300;
+};
+
+struct ItnConfig {
+    bool enabled = false;
+};
+
 struct TensorRtConfig {
     int device_id = 0;
     bool use_fp16 = false;
@@ -54,6 +71,15 @@ struct RecognizerConfig {
 
     // VAD
     VadConfig vad;
+
+    // Endpoint
+    EndpointConfig endpoint;
+
+    // Punctuation
+    PunctuationConfig punctuation;
+
+    // ITN
+    ItnConfig itn;
 
     /** 从 YAML 文件加载配置 */
     static RecognizerConfig FromYaml(const std::string& path);

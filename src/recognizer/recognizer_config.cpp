@@ -51,6 +51,23 @@ RecognizerConfig RecognizerConfig::FromYaml(const std::string& path) {
             cfg.vad.min_silence_ms = vad["min_silence_ms"].as<int>(200);
         }
 
+        if (auto endpoint = root["endpoint"]) {
+            cfg.endpoint.enabled = endpoint["enabled"].as<bool>(false);
+            cfg.endpoint.silence_timeout_ms = endpoint["silence_timeout_ms"].as<int>(800);
+            cfg.endpoint.decoder_stability_frames = endpoint["decoder_stability_frames"].as<int>(40);
+            cfg.endpoint.max_utterance_ms = endpoint["max_utterance_ms"].as<int>(30000);
+        }
+
+        if (auto punct = root["punctuation"]) {
+            cfg.punctuation.enabled = punct["enabled"].as<bool>(false);
+            cfg.punctuation.period_silence_ms = punct["period_silence_ms"].as<int>(800);
+            cfg.punctuation.comma_silence_ms = punct["comma_silence_ms"].as<int>(300);
+        }
+
+        if (auto itn = root["itn"]) {
+            cfg.itn.enabled = itn["enabled"].as<bool>(false);
+        }
+
         cfg.tokens_path = root["tokens"].as<std::string>("");
     } catch (const YAML::Exception& e) {
         spdlog::error("Failed to parse config YAML: {} ({})", path, e.what());

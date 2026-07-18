@@ -4,6 +4,8 @@
 #include "offline_asr/decoder/ctc_wrapper.h"
 #include "offline_asr/decoder/token_table.h"
 #include "offline_asr/feature/fbank_extractor.h"
+#include "offline_asr/recognizer/itn.h"
+#include "offline_asr/recognizer/punctuation.h"
 #include "offline_asr/runtime/runtime_factory.h"
 #include "offline_asr/utils/thread_pool.h"
 
@@ -105,7 +107,24 @@ public:
             if (!decode_results.empty()) {
                 result.tokens = decode_results[0].tokens;
                 result.confidence = decode_results[0].score;
-                result.text = token_table_.Decode(result.tokens);
+
+                // Frame timestamps → ms
+                float frame_shift_ms = cfg_.frame_shift_ms * 4.0f;
+                std::vector<float> timestamps_ms;
+                timestamps_ms.reserve(decode_results[0].timestamps.size());
+                for (int ts : decode_results[0].timestamps)
+                    timestamps_ms.push_back(ts * frame_shift_ms);
+
+                // Post-processing
+                PunctuationInserter punct(
+                    {cfg_.punctuation.enabled, cfg_.punctuation.period_silence_ms,
+                     cfg_.punctuation.comma_silence_ms});
+                InverseTextNormalizer itn({cfg_.itn.enabled});
+
+                result.text = punct.Process(result.tokens, timestamps_ms,
+                                            token_table_, false);
+                if (cfg_.itn.enabled)
+                    result.text = itn.Process(result.text);
             }
 
             pending_.fetch_sub(1, std::memory_order_release);

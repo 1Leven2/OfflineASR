@@ -5,6 +5,9 @@
 #include "offline_asr/decoder/token_table.h"
 #include "offline_asr/feature/fbank_extractor.h"
 #include "offline_asr/feature/streaming_fbank_extractor.h"
+#include "offline_asr/recognizer/endpoint_detector.h"
+#include "offline_asr/recognizer/punctuation.h"
+#include "offline_asr/recognizer/itn.h"
 #include "offline_asr/vad/energy_vad.h"
 #include "offline_asr/runtime/runtime_factory.h"
 #include "offline_asr/utils/timer.h"
@@ -20,7 +23,16 @@ public:
   explicit Impl(const RecognizerConfig &cfg)
       : cfg_(cfg), fbank_extractor_(FbankExtractor::Config{
                        cfg.sample_rate, cfg.frame_length_ms, cfg.frame_shift_ms,
-                       cfg.num_mel_bins, cfg.pre_emphasis_alpha, true}) {}
+                       cfg.num_mel_bins, cfg.pre_emphasis_alpha, true}),
+        endpoint_detector_(
+            EndpointDetector::Config{cfg.endpoint.enabled,
+                                     cfg.endpoint.silence_timeout_ms,
+                                     cfg.endpoint.decoder_stability_frames,
+                                     cfg.endpoint.max_utterance_ms}),
+        punctuation_(PunctuationInserter::Config{cfg.punctuation.enabled,
+                                                  cfg.punctuation.period_silence_ms,
+                                                  cfg.punctuation.comma_silence_ms}),
+        itn_(InverseTextNormalizer::Config{cfg.itn.enabled}) {}
 
   bool Init() {
     // Runtime
@@ -174,7 +186,6 @@ public:
     if (!decode_results.empty()) {
       result.tokens = decode_results[0].tokens;
       result.confidence = decode_results[0].score;
-      result.text = token_table_.Decode(result.tokens);
 
       // Frame timestamps → ms
       float frame_shift_ms = cfg_.frame_shift_ms * 4.0f; // CNN downsampling 4x
@@ -182,6 +193,8 @@ public:
       for (int ts : decode_results[0].timestamps) {
         result.timestamps.push_back(ts * frame_shift_ms);
       }
+
+      result.text = PostProcessText(result.tokens, result.timestamps, false);
     }
 
     double total_ms = total_timer.ElapsedMs();
@@ -232,8 +245,20 @@ public:
         preprocess_buffer_[i] *= inv_peak;
     }
 
+    // Endpoint detection: check before VAD gate
+    bool is_speech = true;
+    if (vad_) {
+      is_speech = vad_->IsSpeech(preprocess_buffer_.data(), num_samples);
+    }
+    int chunk_duration_ms = static_cast<int>(
+        static_cast<double>(num_samples) / cfg_.sample_rate * 1000.0);
+    total_streaming_ms_ += chunk_duration_ms;
+    std::string partial = GetPartialResult();
+    endpoint_detector_.Update(is_speech, chunk_duration_ms, partial,
+                              total_streaming_ms_);
+
     // VAD gate: skip silence chunks
-    if (vad_ && !vad_->IsSpeech(preprocess_buffer_.data(), num_samples))
+    if (vad_ && !is_speech)
       return;
 
     // Extract new FBank frames from this chunk
@@ -285,7 +310,10 @@ public:
     auto results = decoder_->Results(cfg_.n_best);
     if (results.empty())
       return "";
-    return token_table_.Decode(results[0].tokens);
+    std::string text = token_table_.Decode(results[0].tokens);
+    if (cfg_.itn.enabled)
+      text = itn_.Process(text);
+    return text;
   }
 
   std::string Decode() {
@@ -319,7 +347,10 @@ public:
     auto results = decoder_->Results(1);
     if (results.empty())
       return "";
-    return token_table_.Decode(results[0].tokens);
+    std::string text = token_table_.Decode(results[0].tokens);
+    if (cfg_.itn.enabled)
+      text = itn_.Process(text);
+    return text;
   }
 
   void Reset() {
@@ -327,6 +358,19 @@ public:
     chunk_fbank_buffer_.clear();
     decoder_->Reset();
     if (vad_) vad_->Reset();
+    endpoint_detector_.Reset();
+    total_streaming_ms_ = 0;
+  }
+
+  bool IsEndpoint() const { return endpoint_detector_.IsEndpoint(); }
+
+  std::string PostProcessText(const std::vector<int>& tokens,
+                              const std::vector<float>& timestamps_ms,
+                              bool is_final) {
+    std::string text = punctuation_.Process(tokens, timestamps_ms, token_table_, is_final);
+    if (cfg_.itn.enabled)
+      text = itn_.Process(text);
+    return text;
   }
 
 private:
@@ -339,6 +383,14 @@ private:
 
   // VAD
   std::unique_ptr<Vad> vad_;
+
+  // Endpoint detection
+  EndpointDetector endpoint_detector_;
+  int64_t total_streaming_ms_ = 0;
+
+  // Post-processing
+  PunctuationInserter punctuation_;
+  InverseTextNormalizer itn_;
 
   // Streaming state (V1.1)
   std::unique_ptr<StreamingFbankExtractor> streaming_fbank_;
@@ -377,5 +429,6 @@ void Recognizer::AcceptWaveform(const float *samples, size_t num_samples) {
 std::string Recognizer::Decode() { return impl_->Decode(); }
 std::string Recognizer::GetPartialResult() { return impl_->GetPartialResult(); }
 void Recognizer::Reset() { impl_->Reset(); }
+bool Recognizer::IsEndpoint() { return impl_->IsEndpoint(); }
 
 } // namespace offline_asr

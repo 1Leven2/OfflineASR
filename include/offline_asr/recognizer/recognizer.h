@@ -58,6 +58,9 @@ public:
     std::string GetPartialResult();
     void Reset();
 
+    /** Returns true if endpoint detection triggered (streaming mode only) */
+    bool IsEndpoint();
+
 private:
     class Impl;
     std::unique_ptr<Impl> impl_;

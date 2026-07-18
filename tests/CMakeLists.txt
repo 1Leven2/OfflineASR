@@ -33,6 +33,18 @@ add_executable(test_async_recognizer test_async_recognizer.cpp)
 target_link_libraries(test_async_recognizer PRIVATE offline_asr_core gtest_main)
 gtest_discover_tests(test_async_recognizer)
 
+add_executable(test_endpoint_detector test_endpoint_detector.cpp)
+target_link_libraries(test_endpoint_detector PRIVATE offline_asr_core gtest_main)
+gtest_discover_tests(test_endpoint_detector)
+
+add_executable(test_punctuation test_punctuation.cpp)
+target_link_libraries(test_punctuation PRIVATE offline_asr_core gtest_main)
+gtest_discover_tests(test_punctuation)
+
+add_executable(test_itn test_itn.cpp)
+target_link_libraries(test_itn PRIVATE offline_asr_core gtest_main)
+gtest_discover_tests(test_itn)
+
 if(ENABLE_TENSORRT)
     add_executable(test_tensorrt_runtime test_tensorrt_runtime.cpp)
     target_link_libraries(test_tensorrt_runtime PRIVATE offline_asr_core gtest_main)
