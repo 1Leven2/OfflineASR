@@ -8,6 +8,11 @@ model:
 runtime:
   backend: onnx
   num_threads: 8
+  tensorrt:
+    device_id: 0
+    use_fp16: false
+    max_workspace_size: 1073741824
+    engine_cache_dir: "models"
 
 feature:
   sample_rate: 16000

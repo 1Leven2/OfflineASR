@@ -24,7 +24,7 @@ public:
 
   bool Init() {
     // Runtime
-    runtime_ = RuntimeFactory::Create(cfg_.runtime_backend, cfg_.num_threads);
+    runtime_ = RuntimeFactory::Create(cfg_.runtime_backend, cfg_);
     if (!runtime_) {
       spdlog::error("Failed to create runtime backend: {}",
                     cfg_.runtime_backend);

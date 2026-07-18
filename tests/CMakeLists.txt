@@ -28,3 +28,13 @@ gtest_discover_tests(test_streaming_pipeline)
 add_executable(test_vad test_vad.cpp)
 target_link_libraries(test_vad PRIVATE offline_asr_core gtest_main)
 gtest_discover_tests(test_vad)
+
+add_executable(test_async_recognizer test_async_recognizer.cpp)
+target_link_libraries(test_async_recognizer PRIVATE offline_asr_core gtest_main)
+gtest_discover_tests(test_async_recognizer)
+
+if(ENABLE_TENSORRT)
+    add_executable(test_tensorrt_runtime test_tensorrt_runtime.cpp)
+    target_link_libraries(test_tensorrt_runtime PRIVATE offline_asr_core gtest_main)
+    gtest_discover_tests(test_tensorrt_runtime)
+endif()

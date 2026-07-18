@@ -72,9 +72,6 @@ std::vector<float> OnnxRuntime::Forward(const float *input, int64_t num_frames,
       output_vocab_dim_ = output_shape.back();
     }
 
-    output_time_dim_ = (output_shape.size() >= 2) ? output_shape[output_shape.size() - 2]
-                                                   : (num_frames / 4);
-
     std::vector<float> result(output_count);
     std::memcpy(result.data(), output_tensor.GetTensorData<float>(),
                 output_count * sizeof(float));
@@ -86,7 +83,7 @@ std::vector<float> OnnxRuntime::Forward(const float *input, int64_t num_frames,
   }
 }
 
-int64_t OnnxRuntime::NumOutputFrames(int64_t) const { return output_time_dim_; }
+int64_t OnnxRuntime::NumOutputFrames(int64_t num_input_frames) const { return num_input_frames / 4; }
 
 int64_t OnnxRuntime::VocabSize() const { return output_vocab_dim_; }
 

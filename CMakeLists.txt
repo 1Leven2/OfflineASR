@@ -11,6 +11,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(BUILD_TESTS "Build unit tests" OFF)
 option(BUILD_BENCHMARKS "Build benchmarks" OFF)
 option(BUILD_CLI "Build CLI tool" ON)
+option(ENABLE_TENSORRT "Build with NVIDIA TensorRT backend" OFF)
 
 # ---- CMake modules ----
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -55,6 +56,16 @@ find_package(ONNXRUNTIME REQUIRED)
 message(STATUS "ONNX Runtime include: ${ONNXRUNTIME_INCLUDE_DIRS}")
 message(STATUS "ONNX Runtime library: ${ONNXRUNTIME_LIBRARIES}")
 
+# TensorRT (optional)
+if(ENABLE_TENSORRT)
+    find_package(CUDAToolkit REQUIRED)
+    find_package(TensorRT REQUIRED)
+    message(STATUS "CUDA include: ${CUDAToolkit_INCLUDE_DIRS}")
+    message(STATUS "TensorRT include: ${TENSORRT_INCLUDE_DIRS}")
+    message(STATUS "TensorRT libraries: ${TENSORRT_LIBRARIES}")
+    add_compile_definitions(ENABLE_TENSORRT)
+endif()
+
 # FBank (existing library)
 add_library(fbank STATIC IMPORTED)
 set_target_properties(fbank PROPERTIES
@@ -81,6 +92,8 @@ add_library(offline_asr_core STATIC
     src/decoder/token_table.cpp
     src/recognizer/recognizer.cpp
     src/recognizer/recognizer_config.cpp
+    src/utils/thread_pool.cpp
+    src/recognizer/async_recognizer.cpp
     src/utils/logger.cpp
 )
 
@@ -101,6 +114,19 @@ target_link_libraries(offline_asr_core
         yaml-cpp
         OpenMP::OpenMP_CXX
 )
+
+# TensorRT: conditional sources + link
+if(ENABLE_TENSORRT)
+    target_sources(offline_asr_core PRIVATE
+        src/runtime/tensorrt_runtime.cpp
+    )
+    target_link_libraries(offline_asr_core
+        PUBLIC
+            TensorRT::nvinfer
+            TensorRT::nvonnxparser
+            CUDA::cudart
+    )
+endif()
 
 # ---- CLI ----
 if(BUILD_CLI)

@@ -19,6 +19,13 @@ RecognizerConfig RecognizerConfig::FromYaml(const std::string& path) {
         if (auto runtime = root["runtime"]) {
             cfg.runtime_backend = runtime["backend"].as<std::string>("onnx");
             cfg.num_threads = runtime["num_threads"].as<int>(0);
+
+            if (auto trt = runtime["tensorrt"]) {
+                cfg.tensorrt.device_id = trt["device_id"].as<int>(0);
+                cfg.tensorrt.use_fp16 = trt["use_fp16"].as<bool>(false);
+                cfg.tensorrt.max_workspace_size = trt["max_workspace_size"].as<size_t>(1ULL << 30);
+                cfg.tensorrt.engine_cache_dir = trt["engine_cache_dir"].as<std::string>("models");
+            }
         }
 
         if (auto feature = root["feature"]) {

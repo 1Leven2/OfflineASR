@@ -50,7 +50,6 @@ private:
     Ort::MemoryInfo memory_info_{nullptr};
     Ort::RunOptions run_opts_;
 
-    int64_t output_time_dim_ = -1;
     int64_t output_vocab_dim_ = -1;
 
     int num_threads_;

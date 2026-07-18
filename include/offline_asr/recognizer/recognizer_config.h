@@ -14,6 +14,13 @@ struct VadConfig {
     int min_silence_ms = 200;
 };
 
+struct TensorRtConfig {
+    int device_id = 0;
+    bool use_fp16 = false;
+    size_t max_workspace_size = 1ULL << 30;
+    std::string engine_cache_dir = "models";
+};
+
 /**
  * 识别器配置 — 从 YAML 文件解析或代码构建
  */
@@ -33,6 +40,9 @@ struct RecognizerConfig {
     std::string input_name = "input";
     std::string output_name = "output";
     int num_threads = 0;
+
+    // TensorRT
+    TensorRtConfig tensorrt;
 
     // Decoder
     int beam_size = 10;
